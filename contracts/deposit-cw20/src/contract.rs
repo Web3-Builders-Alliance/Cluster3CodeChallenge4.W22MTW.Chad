@@ -15,7 +15,7 @@ use cw_utils;
 use crate::error::ContractError;
 use crate::msg::{
     Cw20DepositResponse, Cw20HookMsg, Cw721DepositResponse, Cw721HookMsg, DepositResponse,
-    ExecuteMsg, InstantiateMsg, QueryMsg, MigrateMsg,
+    ExecuteMsg, InstantiateMsg, MigrateMsg, QueryMsg,
 };
 use crate::state::{Cw20Deposits, Cw721Deposits, Deposit, Deposits};
 use crate::traits::{DepositExecute, DepositQuery};
@@ -46,19 +46,19 @@ where
     ) -> Result<Response<C>, ContractError> {
         let sender = info.sender.clone().into_string();
 
-        let d_coins = info.funds[0].clone();
+        let d_coin = cw_utils::one_coin(&info).unwrap();
 
         //check to see if deposit exists
         match self
             .deposits
-            .load(deps.storage, (&sender, d_coins.denom.as_str()))
+            .load(deps.storage, (&sender, d_coin.denom.as_str()))
         {
             Ok(mut deposit) => {
                 //add coins to their account
-                deposit.coins.amount = deposit.coins.amount.checked_add(d_coins.amount).unwrap();
+                deposit.coins.amount = deposit.coins.amount.checked_add(d_coin.amount).unwrap();
                 deposit.count = deposit.count.checked_add(1).unwrap();
                 self.deposits
-                    .save(deps.storage, (&sender, d_coins.denom.as_str()), &deposit)
+                    .save(deps.storage, (&sender, d_coin.denom.as_str()), &deposit)
                     .unwrap();
             }
             Err(_) => {
@@ -66,17 +66,17 @@ where
                 let deposit = Deposits {
                     count: 1,
                     owner: info.sender,
-                    coins: d_coins.clone(),
+                    coins: d_coin.clone(),
                 };
                 self.deposits
-                    .save(deps.storage, (&sender, d_coins.denom.as_str()), &deposit)
+                    .save(deps.storage, (&sender, d_coin.denom.as_str()), &deposit)
                     .unwrap();
             }
         }
         Ok(Response::new()
             .add_attribute("execute", "deposit")
-            .add_attribute("denom", d_coins.denom)
-            .add_attribute("amount", d_coins.amount))
+            .add_attribute("denom", d_coin.denom)
+            .add_attribute("amount", d_coin.amount))
     }
 
     fn execute_withdraw(
@@ -86,6 +86,7 @@ where
         amount: u128,
         denom: String,
     ) -> Result<Response<C>, ContractError> {
+        cw_utils::nonpayable(&info).unwrap();
         let sender = info.sender.clone().into_string();
 
         let mut deposit = self
@@ -173,6 +174,7 @@ where
         contract: String,
         amount: Uint128,
     ) -> Result<Response<C>, ContractError> {
+        cw_utils::nonpayable(&info).unwrap();
         let sender = info.sender.clone().into_string();
         match self.cw20_deposits.load(deps.storage, (&sender, &contract)) {
             Ok(mut deposit) => {
@@ -199,7 +201,9 @@ where
                 self.total_cw20_deposits.update(
                     deps.storage,
                     env.block.height,
-                    |total| -> StdResult<u64> { Ok(total.unwrap_or_default().checked_sub(1u64).unwrap()) },
+                    |total| -> StdResult<u64> {
+                        Ok(total.unwrap_or_default().checked_sub(1u64).unwrap())
+                    },
                 )?;
 
                 Ok(Response::new()
@@ -250,6 +254,7 @@ where
         contract: String,
         token_id: String,
     ) -> Result<Response<C>, ContractError> {
+        cw_utils::nonpayable(&info).unwrap();
         let owner = info.sender.clone().into_string();
 
         let _deposit = self
@@ -263,7 +268,7 @@ where
 
         let exe_msg = nft::contract::ExecuteMsg::TransferNft {
             recipient: owner,
-            token_id: token_id,
+            token_id,
         };
         let msg = WasmMsg::Execute {
             contract_addr: contract,
@@ -352,11 +357,17 @@ where
         Ok(Cw721DepositResponse { deposits })
     }
 
-    fn query_total_cw20_deposits_changelog(&self, deps: Deps) -> StdResult<Vec<(u64, Option<u64>)>>{
+    fn query_total_cw20_deposits_changelog(
+        &self,
+        deps: Deps,
+    ) -> StdResult<Vec<(u64, Option<u64>)>> {
         let res: StdResult<Vec<_>> = self
-            .total_cw20_deposits.changelog().range(deps.storage, None, None, Order::Ascending).collect();
+            .total_cw20_deposits
+            .changelog()
+            .range(deps.storage, None, None, Order::Ascending)
+            .collect();
         let changelog = res?;
-        Ok( changelog.into_iter().map(|(k, v)| (k, v.old)).collect() )
+        Ok(changelog.into_iter().map(|(k, v)| (k, v.old)).collect())
     }
 }
 
@@ -368,9 +379,9 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
         QueryMsg::Cw20Deposits { address } => {
             to_binary(&contract.query_cw20_deposits(deps, address)?)
         }
-        QueryMsg::Cw721DepositsByContract {
-            contract_addr,
-        } => to_binary(&contract.query_cw721_by_contract(deps, contract_addr)?),
+        QueryMsg::Cw721DepositsByContract { contract_addr } => {
+            to_binary(&contract.query_cw721_by_contract(deps, contract_addr)?)
+        }
         QueryMsg::Cw721DepositsByOwner { address } => {
             to_binary(&contract.query_cw721_by_owner(deps, address)?)
         }
@@ -389,6 +400,7 @@ pub fn receive_cw20(
     contract: &Deposit<Empty>,
     cw20_msg: Cw20ReceiveMsg,
 ) -> Result<Response, ContractError> {
+    cw_utils::nonpayable(&info).unwrap();
     match from_binary(&cw20_msg.msg) {
         Ok(Cw20HookMsg::Deposit {}) => {
             contract.execute_cw20_deposit(deps, env, info, cw20_msg.sender, cw20_msg.amount)
@@ -406,6 +418,7 @@ pub fn receive_cw721(
     contract: &Deposit<Empty>,
     cw721_msg: Cw721ReceiveMsg,
 ) -> Result<Response, ContractError> {
+    cw_utils::nonpayable(&info).unwrap();
     match from_binary(&cw721_msg.msg) {
         Ok(Cw721HookMsg::Deposit {}) => {
             contract.execute_cw721_deposit(deps, env, info, cw721_msg.sender, cw721_msg.token_id)

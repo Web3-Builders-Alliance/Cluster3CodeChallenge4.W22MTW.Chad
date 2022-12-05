@@ -42,11 +42,13 @@ where
     fn execute_deposit(
         &self,
         deps: DepsMut,
+        env: Env,
         info: MessageInfo,
     ) -> Result<Response<C>, ContractError> {
         let sender = info.sender.clone().into_string();
 
         let d_coin = cw_utils::one_coin(&info).unwrap();
+        let expiration = cw_utils::Duration::Height(20).after(&env.block);
 
         //check to see if deposit exists
         match self
@@ -57,6 +59,7 @@ where
                 //add coins to their account
                 deposit.coins.amount = deposit.coins.amount.checked_add(d_coin.amount).unwrap();
                 deposit.count = deposit.count.checked_add(1).unwrap();
+                deposit.stake_time = expiration;
                 self.deposits
                     .save(deps.storage, (&sender, d_coin.denom.as_str()), &deposit)
                     .unwrap();
@@ -67,6 +70,7 @@ where
                     count: 1,
                     owner: info.sender,
                     coins: d_coin.clone(),
+                    stake_time: expiration,
                 };
                 self.deposits
                     .save(deps.storage, (&sender, d_coin.denom.as_str()), &deposit)
@@ -82,6 +86,7 @@ where
     fn execute_withdraw(
         &self,
         deps: DepsMut,
+        env: Env,
         info: MessageInfo,
         amount: u128,
         denom: String,
@@ -93,6 +98,11 @@ where
             .deposits
             .load(deps.storage, (&sender, denom.as_str()))
             .unwrap();
+
+        if deposit.stake_time.is_expired(&env.block) == false {
+            return Err(ContractError::StakeDurationNotPassed {});
+        }
+
         deposit.coins.amount = deposit
             .coins
             .amount
@@ -225,11 +235,13 @@ where
         token_id: String,
     ) -> Result<Response<C>, ContractError> {
         let cw721_contract_address = info.sender.clone().into_string();
+        let expiration = cw_utils::Duration::Height(20).after(&env.block);
 
         let data = Cw721Deposits {
             owner: owner.clone(),
             contract: info.sender.into_string(),
             token_id: token_id.clone(),
+            stake_time: expiration,
         };
         self.cw721_deposits
             .save(
@@ -257,10 +269,14 @@ where
         cw_utils::nonpayable(&info).unwrap();
         let owner = info.sender.clone().into_string();
 
-        let _deposit = self
+        let deposit = self
             .cw721_deposits
             .load(deps.storage, (&contract, &token_id))
             .unwrap();
+
+        if deposit.stake_time.is_expired(&env.block) == false {
+            return Err(ContractError::StakeDurationNotPassed {});
+        }
 
         self.cw721_deposits
             .remove(deps.storage, (&contract, &token_id), env.block.height)
@@ -291,9 +307,9 @@ pub fn execute(
 ) -> Result<Response, ContractError> {
     let contract = Deposit::<Empty>::default();
     match msg {
-        ExecuteMsg::Deposit {} => contract.execute_deposit(deps, info),
+        ExecuteMsg::Deposit {} => contract.execute_deposit(deps, env, info),
         ExecuteMsg::Withdraw { amount, denom } => {
-            contract.execute_withdraw(deps, info, amount, denom)
+            contract.execute_withdraw(deps, env, info, amount, denom)
         }
         ExecuteMsg::Receive(cw20_msg) => receive_cw20(deps, env, info, &contract, cw20_msg),
         ExecuteMsg::ReceiveNft(cw721_msg) => receive_cw721(deps, env, info, &contract, cw721_msg),

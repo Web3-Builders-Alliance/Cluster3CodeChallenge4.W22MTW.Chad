@@ -39,6 +39,7 @@ pub struct Deposits {
     pub count: i32,
     pub owner: Addr,
     pub coins: Coin,
+    pub stake_time: cw_utils::Expiration,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
@@ -46,6 +47,7 @@ pub struct Cw721Deposits {
     pub owner: String,
     pub contract: String,
     pub token_id: String,
+    pub stake_time: cw_utils::Expiration,
 }
 
 pub struct Cw20DepositIndexes<'a> {

@@ -1,15 +1,17 @@
 use std::marker::PhantomData;
 
-use cw20::Expiration;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use cosmwasm_std::{Uint128, Addr, Coin, BlockInfo, CustomMsg};
-use cw_storage_plus::{Map, Item, SnapshotItem, IndexedSnapshotMap, SnapshotMap, Strategy, UniqueIndex, Index, IndexList, MultiIndex, IndexedMap};
+use cosmwasm_std::{Addr, Coin, CustomMsg, Uint128};
+use cw_storage_plus::{
+    Index, IndexList, IndexedMap, IndexedSnapshotMap, Item, Map, MultiIndex, SnapshotItem, Strategy,
+};
+use cw_utils;
 
 pub struct Deposit<'a, C>
 where
-    C: CustomMsg
+    C: CustomMsg,
 {
     //keys address and denom
     pub total_deposits: Item<'a, u64>,
@@ -18,7 +20,8 @@ where
     pub total_cw20_deposits: SnapshotItem<'a, u64>,
     pub cw20_deposits: IndexedMap<'a, (&'a str, &'a str), Cw20Deposits, Cw20DepositIndexes<'a>>,
     //key is contract address, token_id
-    pub cw721_deposits: IndexedSnapshotMap<'a, (&'a str, &'a str), Cw721Deposits, Cw721DepositIndexes<'a>>,
+    pub cw721_deposits:
+        IndexedSnapshotMap<'a, (&'a str, &'a str), Cw721Deposits, Cw721DepositIndexes<'a>>,
     pub(crate) _custom_response: PhantomData<C>,
 }
 
@@ -26,23 +29,23 @@ where
 pub struct Cw20Deposits {
     pub count: u64,
     pub owner: String,
-    pub contract:String,
-    pub amount:Uint128,
-    pub stake_time:Expiration
+    pub contract: String,
+    pub amount: Uint128,
+    pub stake_time: cw_utils::Expiration,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 pub struct Deposits {
     pub count: i32,
     pub owner: Addr,
-    pub coins: Coin
+    pub coins: Coin,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 pub struct Cw721Deposits {
     pub owner: String,
-    pub contract:String,
-    pub token_id:String
+    pub contract: String,
+    pub token_id: String,
 }
 
 pub struct Cw20DepositIndexes<'a> {
@@ -70,24 +73,18 @@ impl<'a> IndexList<Cw721Deposits> for Cw721DepositIndexes<'a> {
 
 impl<C> Default for Deposit<'static, C>
 where
-    C: CustomMsg
+    C: CustomMsg,
 {
     fn default() -> Self {
-        Self::new(
-            "total_deposits",
-            "deposits",
-        )
+        Self::new("total_deposits", "deposits")
     }
 }
 
 impl<'a, C> Deposit<'a, C>
 where
-    C: CustomMsg
+    C: CustomMsg,
 {
-    fn new(
-        total_deposits_key: &'a str,
-        deposits_key: &'a str,
-    ) -> Self {
+    fn new(total_deposits_key: &'a str, deposits_key: &'a str) -> Self {
         Self {
             total_deposits: Item::new(total_deposits_key),
             deposits: Map::new(deposits_key),
@@ -100,8 +97,16 @@ where
             cw20_deposits: IndexedMap::new(
                 "cw20_deposits",
                 Cw20DepositIndexes {
-                    count: MultiIndex::new(|_pk, d| d.count.clone(), "cw20deposits", "cw20deposits__count"),
-                    owner: MultiIndex::new(|_pk, d| d.owner.clone(), "cw20deposits", "cw20deposits__owner")
+                    count: MultiIndex::new(
+                        |_pk, d| d.count.clone(),
+                        "cw20deposits",
+                        "cw20deposits__count",
+                    ),
+                    owner: MultiIndex::new(
+                        |_pk, d| d.owner.clone(),
+                        "cw20deposits",
+                        "cw20deposits__owner",
+                    ),
                 },
             ),
             cw721_deposits: IndexedSnapshotMap::new(
@@ -109,15 +114,18 @@ where
                 "cw721_deposits_check",
                 "cw721_deposits_change",
                 Strategy::EveryBlock,
-                Cw721DepositIndexes { 
-                    owner: MultiIndex::new(|_pk, d| d.owner.clone(), "cw721deposits", "cw721deposits__owner")
-                }
+                Cw721DepositIndexes {
+                    owner: MultiIndex::new(
+                        |_pk, d| d.owner.clone(),
+                        "cw721deposits",
+                        "cw721deposits__owner",
+                    ),
+                },
             ),
             _custom_response: PhantomData,
         }
     }
 }
-
 
 //key is address, denom
 //pub const DEPOSITS: Map<(&str, &str), Deposits> = Map::new("deposits");

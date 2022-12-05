@@ -6,7 +6,7 @@ use cosmwasm_std::{
 };
 
 use cw2::set_contract_version;
-use cw20::{Cw20ReceiveMsg, Expiration};
+use cw20::Cw20ReceiveMsg;
 use cw20_base;
 use cw721::Cw721ReceiveMsg;
 use cw_utils;
@@ -124,7 +124,7 @@ where
         amount: Uint128,
     ) -> Result<Response<C>, ContractError> {
         let cw20_contract_address = info.sender.clone().into_string();
-        let expiration = Expiration::AtHeight(env.block.height + 20);
+        let expiration = cw_utils::Duration::Height(20).after(&env.block);
         match self
             .cw20_deposits
             .load(deps.storage, (&owner, &cw20_contract_address))
